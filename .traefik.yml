@@ -1,10 +1,10 @@
-displayName: Podman Provider
+displayName: Multi HTTP Provider
 type: provider
 iconPath: icon.png
 
-import: github.com/traefik/httpprovider
+import: github.com/marcelohpf/multi-http-provider
 
-summary: 'Scrap multiple http apis that provides podman configuration'
+summary: 'Scrap multiple http apis that provides traefik http dynamic configuration'
 
 testData:
   pollInterval: 5s

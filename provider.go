@@ -118,19 +118,19 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 			for node, e := range p.endpoints {
 				resp, err := http.Get(fmt.Sprintf("http://%s:5000/traefik/config", e.endpoint))
 				if err != nil {
-					log.Print("Error making request:", err)
+					log.Print("Error making request to %s:", e.endpoint, err)
 					continue
 				}
 				defer resp.Body.Close()
 				body, err := io.ReadAll(resp.Body)
 				if err != nil {
-					log.Print("Error reading response body:", err)
+					log.Print("Error reading response body from %s:", e.endpoint, err)
 					continue
 				}
 				var config dynamic.Configuration
 				err = json.Unmarshal(body, &config)
 				if err != nil {
-					log.Print("Error decoding body:", err)
+					log.Print("Error decoding body from %s into dynamic configuration:", e.endpoint, err)
 					continue
 				}
 				// https://pkg.go.dev/github.com/traefik/traefik/v3@v3.1.6/pkg/config/dynamic#Configuration

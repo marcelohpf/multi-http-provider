@@ -9,7 +9,7 @@ This is a provider plugin for traefik that allows you to use multiple http sourc
 experimental:
   plugins:
     multi-http-provider:
-      moduleName: github.com/marcferreira/multi-http-provider
+      moduleName: github.com/marcelohpf/multi-http-provider
       version: vX.Y.Z
 providers:
   plugin:
