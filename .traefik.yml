@@ -1,0 +1,10 @@
+displayName: Podman Provider
+type: provider
+iconPath: icon.png
+
+import: github.com/traefik/httpprovider
+
+summary: 'Scrap multiple http apis that provides podman configuration'
+
+testData:
+  pollInterval: 5s
