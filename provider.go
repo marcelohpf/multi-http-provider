@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/traefik/genconf/dynamic"
@@ -22,6 +21,7 @@ type Endpoint struct {
 type Config struct {
 	PollInterval string              `json:"pollInterval,omitempty"`
 	PollTimeout  string              `json:"pollTimeout,omitempty"`
+	EntryPoints  []string            `json:"entrypoints,omitempty"`
 	Endpoints    map[string]Endpoint `json:"endpoints,omitempty"`
 }
 
@@ -31,6 +31,7 @@ func CreateConfig() *Config {
 		PollInterval: "15s",
 		PollTimeout:  "10s",
 		Endpoints:    map[string]Endpoint{},
+		EntryPoints:  []string{},
 	}
 }
 
@@ -45,6 +46,7 @@ type Provider struct {
 	pollInterval time.Duration
 	pollTimeout  time.Duration
 	endpoints    map[string]endpoint
+	entrypoints  map[string]bool
 	cancel       func()
 }
 
@@ -67,11 +69,17 @@ func New(ctx context.Context, config *Config, name string) (*Provider, error) {
 			headers:  v.Headers,
 		}
 	}
+	entrypoints := map[string]bool{}
+	for _, entrypoint := range config.EntryPoints {
+		entrypoints[entrypoint] = true
+	}
+
 	return &Provider{
 		name:         name,
 		pollInterval: pi,
 		pollTimeout:  pt,
 		endpoints:    endpoints,
+		entrypoints:  entrypoints,
 	}, nil
 }
 
@@ -85,6 +93,9 @@ func (p *Provider) Init() error {
 	}
 	if len(p.endpoints) <= 0 {
 		return fmt.Errorf("must provide at least 1 endpoint")
+	}
+	if len(p.entrypoints) <= 0 {
+		return fmt.Errorf("must specify at least one entrypoint")
 	}
 	return nil
 }
@@ -136,11 +147,13 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 				// https://pkg.go.dev/github.com/traefik/traefik/v3@v3.1.6/pkg/config/dynamic#Configuration
 				configs[node] = &config
 				for _, v := range config.HTTP.Routers {
-					var middlewares []string
-					for _, m := range v.Middlewares {
-						middlewares = append(middlewares, strings.Replace(m, "@http", "@plugin-multi-http-provider", 1))
+					var entrypoints []string
+					for _, e := range v.EntryPoints {
+						if _, ok := p.entrypoints[e]; ok {
+							entrypoints = append(entrypoints, e)
+						}
 					}
-					v.Middlewares = middlewares
+					v.EntryPoints = entrypoints
 				}
 			}
 			config := mergeConfig(configs)

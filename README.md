@@ -16,6 +16,8 @@ providers:
     multi-http-provider:
       pollInterval: 60s
       pollTimeout: 30s
+      entrypoints:
+      - web
       endpoints:
         server1:
             endpoint: 10.0.1.2
