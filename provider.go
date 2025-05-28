@@ -145,16 +145,24 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 					continue
 				}
 				// https://pkg.go.dev/github.com/traefik/traefik/v3@v3.1.6/pkg/config/dynamic#Configuration
-				configs[node] = &config
-				for _, v := range config.HTTP.Routers {
+
+				toDelete := map[string]bool{}
+				for k, v := range config.HTTP.Routers {
 					var entrypoints []string
 					for _, e := range v.EntryPoints {
 						if _, ok := p.entrypoints[e]; ok {
 							entrypoints = append(entrypoints, e)
 						}
 					}
+					toDelete[k] = len(entrypoints) == 0
 					v.EntryPoints = entrypoints
 				}
+				for k, v := range toDelete {
+					if v {
+						delete(config.HTTP.Routers, k)
+					}
+				}
+				configs[node] = &config
 			}
 			config := mergeConfig(configs)
 			cfgChan <- dynamic.JSONPayload{Configuration: config}
