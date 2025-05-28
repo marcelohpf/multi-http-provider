@@ -146,7 +146,8 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 				}
 				// https://pkg.go.dev/github.com/traefik/traefik/v3@v3.1.6/pkg/config/dynamic#Configuration
 
-				toDelete := map[string]bool{}
+				toDelete := map[string]string{}
+				toDeleteMiddlewares := map[string]bool{}
 				for k, v := range config.HTTP.Routers {
 					var entrypoints []string
 					for _, e := range v.EntryPoints {
@@ -154,12 +155,27 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 							entrypoints = append(entrypoints, e)
 						}
 					}
-					toDelete[k] = len(entrypoints) == 0
+					for _, m := range v.Middlewares {
+						if _, ok := toDeleteMiddlewares[m]; !ok {
+							toDeleteMiddlewares[m] = true
+						}
+					}
+					if len(entrypoints) == 0 {
+						toDelete[k] = v.Service
+					} else {
+						for _, m := range v.Middlewares {
+							toDeleteMiddlewares[m] = false
+						}
+					}
 					v.EntryPoints = entrypoints
 				}
 				for k, v := range toDelete {
+					delete(config.HTTP.Routers, k)
+					delete(config.HTTP.Services, v)
+				}
+				for k, v := range toDeleteMiddlewares {
 					if v {
-						delete(config.HTTP.Routers, k)
+						delete(config.HTTP.Middlewares, k)
 					}
 				}
 				configs[node] = &config
