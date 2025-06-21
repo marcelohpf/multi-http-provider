@@ -129,25 +129,29 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 			for node, e := range p.endpoints {
 				resp, err := http.Get(fmt.Sprintf("http://%s:5000/traefik/config", e.endpoint))
 				if err != nil {
-					log.Print("Error making request to %s:", e.endpoint, err)
+					log.Printf("Error making request to %s: %v", e.endpoint, err)
 					continue
 				}
 				defer resp.Body.Close()
 				body, err := io.ReadAll(resp.Body)
 				if err != nil {
-					log.Print("Error reading response body from %s:", e.endpoint, err)
+					log.Printf("Error reading response body from %s: %v", e.endpoint, err)
 					continue
 				}
 				var config dynamic.Configuration
 				err = json.Unmarshal(body, &config)
 				if err != nil {
-					log.Print("Error decoding body from %s into dynamic configuration:", e.endpoint, err)
+					log.Printf("Error decoding body from %s into dynamic configuration: %s", e.endpoint, err)
+					continue
+				}
+				if config.HTTP == nil {
+					log.Printf("No http configs from endpoint %s", e.endpoint)
 					continue
 				}
 				// https://pkg.go.dev/github.com/traefik/traefik/v3@v3.1.6/pkg/config/dynamic#Configuration
 
+				// remove routers not matching entrypoints
 				toDelete := map[string]string{}
-				toDeleteMiddlewares := map[string]bool{}
 				for k, v := range config.HTTP.Routers {
 					var entrypoints []string
 					for _, e := range v.EntryPoints {
@@ -155,17 +159,8 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 							entrypoints = append(entrypoints, e)
 						}
 					}
-					for _, m := range v.Middlewares {
-						if _, ok := toDeleteMiddlewares[m]; !ok {
-							toDeleteMiddlewares[m] = true
-						}
-					}
 					if len(entrypoints) == 0 {
 						toDelete[k] = v.Service
-					} else {
-						for _, m := range v.Middlewares {
-							toDeleteMiddlewares[m] = false
-						}
 					}
 					v.EntryPoints = entrypoints
 				}
@@ -173,20 +168,46 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 					delete(config.HTTP.Routers, k)
 					delete(config.HTTP.Services, v)
 				}
-				for k, v := range toDeleteMiddlewares {
-					if v {
-						delete(config.HTTP.Middlewares, k)
+
+				// handle unused middlewres
+				usedMiddlewares := map[string]bool{}
+				for _, v := range config.HTTP.Routers {
+					for _, m := range v.Middlewares {
+						usedMiddlewares[m] = true
+						mw, ok := config.HTTP.Middlewares[m]
+						if ok && mw.Chain != nil {
+							for _, c := range mw.Chain.Middlewares {
+								usedMiddlewares[c] = true
+							}
+						}
 					}
+				}
+				toDeleteMiddleware := map[string]bool{}
+				for k := range config.HTTP.Middlewares {
+					if _, ok := usedMiddlewares[k]; !ok {
+						toDeleteMiddleware[k] = true
+					}
+				}
+				for k := range toDeleteMiddleware {
+					delete(config.HTTP.Middlewares, k)
+				}
+
+				if len(config.HTTP.Routers) == 0 && len(config.HTTP.Middlewares) == 0 && len(config.HTTP.Services) == 0 {
+					log.Printf("No configuration present after filtering entrypoints from %s", e.endpoint)
+					continue
 				}
 				configs[node] = &config
 			}
-			config := mergeConfig(configs)
-			cfgChan <- dynamic.JSONPayload{Configuration: config}
+			if len(configs) > 0 {
+				config := mergeConfig(configs)
+				cfgChan <- dynamic.JSONPayload{Configuration: config}
+			}
 		case <-ctx.Done():
 			return
 		}
 	}
 }
+
 func mergeConfig(configs map[string]*dynamic.Configuration) *dynamic.Configuration {
 	newConfig := &dynamic.Configuration{
 		HTTP: &dynamic.HTTPConfiguration{
