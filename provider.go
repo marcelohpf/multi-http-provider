@@ -118,6 +118,20 @@ func (p *Provider) Provide(cfgChan chan<- json.Marshaler) error {
 	return nil
 }
 
+func (p *Provider) fetchConfig(endpoint string) ([]byte, error) {
+	resp, err := http.Get(fmt.Sprintf("http://%s:5000/traefik/config", endpoint))
+	if err != nil {
+		return []byte{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return []byte{}, err
+	}
+	return body, nil
+}
+
 func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Marshaler) {
 	ticker := time.NewTicker(p.pollInterval)
 	defer ticker.Stop()
@@ -127,15 +141,9 @@ func (p *Provider) loadConfiguration(ctx context.Context, cfgChan chan<- json.Ma
 		case <-ticker.C:
 			configs := map[string]*dynamic.Configuration{}
 			for node, e := range p.endpoints {
-				resp, err := http.Get(fmt.Sprintf("http://%s:5000/traefik/config", e.endpoint))
+				body, err := p.fetchConfig(e.endpoint)
 				if err != nil {
-					log.Printf("Error making request to %s: %v", e.endpoint, err)
-					continue
-				}
-				defer resp.Body.Close()
-				body, err := io.ReadAll(resp.Body)
-				if err != nil {
-					log.Printf("Error reading response body from %s: %v", e.endpoint, err)
+					log.Printf("Error fetching config body from %s: %s", e.endpoint, err)
 					continue
 				}
 				var config dynamic.Configuration
